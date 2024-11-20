@@ -1,0 +1,62 @@
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs y archivos temporales
+*.log
+*.tmp
+*.swp
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.env
+
+# IDEs y editores
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Construcción
+dist/
+build/
+out/
+
+# React / Next.js
+.next/
+.eslintcache
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+
+# Electron
+release/
+*.asar
+
+# Docker
+docker-compose.override.yml
+*.tar
+
+# Base de datos
+*.sqlite3
+*.db
+
+# Otros
+*.bak
+*.orig
+*.rej
+
+# Archivos específicos de usuario
+*.env.local
