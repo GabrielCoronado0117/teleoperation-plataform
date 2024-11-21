@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { auth } from '../../../firebase/config';
 
 function DogControl() {
@@ -6,43 +6,114 @@ function DogControl() {
   const [movement, setMovement] = useState({ x: 0, y: 0 });
   const [isStanding, setIsStanding] = useState(true);
   const [selectedMode, setSelectedMode] = useState('normal'); // normal, agile, stable
+  const [batteryLevel, setBatteryLevel] = useState(100);
+  const [isConnected, setIsConnected] = useState(true);
+  const [stabilityLevel, setStabilityLevel] = useState(100);
+  const [actionHistory, setActionHistory] = useState([]);
+  const [systemStatus, setSystemStatus] = useState({
+    motors: 'OK',
+    balance: 'OK',
+    sensors: 'OK',
+    servos: 'OK'
+  });
+
+  // Simulación de actualización de estado
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBatteryLevel(prev => Math.max(0, prev - 0.1));
+      setIsConnected(Math.random() > 0.1);
+      setStabilityLevel(Math.min(100, Math.max(60, 80 + Math.random() * 40)));
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Función para registrar acciones
+  const logAction = (action, detail) => {
+    setActionHistory(prev => [{
+      action,
+      detail,
+      timestamp: new Date().toLocaleTimeString()
+    }, ...prev.slice(0, 4)]);
+  };
 
   // Función para el control de movimiento
   const handleMovement = (direction) => {
+    let newX = movement.x;
+    let newY = movement.y;
+
     switch(direction) {
       case 'forward':
-        setMovement(prev => ({ ...prev, y: 1 }));
+        newY = 1;
+        newX = 0;
         break;
       case 'backward':
-        setMovement(prev => ({ ...prev, y: -1 }));
+        newY = -1;
+        newX = 0;
         break;
       case 'left':
-        setMovement(prev => ({ ...prev, x: -1 }));
+        newX = -1;
+        newY = 0;
         break;
       case 'right':
-        setMovement(prev => ({ ...prev, x: 1 }));
+        newX = 1;
+        newY = 0;
         break;
       case 'stop':
-        setMovement({ x: 0, y: 0 });
+        newX = 0;
+        newY = 0;
         break;
     }
-    console.log(`Movimiento: ${direction}, Velocidad: ${speed}%`);
+
+    setMovement({ x: newX, y: newY });
+    logAction('Movimiento', `Dirección: ${direction}, Velocidad: ${speed}%`);
   };
 
   // Función para cambiar postura
   const toggleStance = () => {
     setIsStanding(!isStanding);
-    console.log(`Robot ${isStanding ? 'sentado' : 'parado'}`);
+    logAction('Postura', isStanding ? 'Sentado' : 'De pie');
   };
 
   // Función para cambiar modo
   const changeMode = (mode) => {
     setSelectedMode(mode);
-    console.log(`Modo cambiado a: ${mode}`);
+    logAction('Modo', `Cambiado a: ${mode}`);
   };
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Barra de estado */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 py-2">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className="text-sm text-gray-600">
+                {isConnected ? 'Conectado' : 'Desconectado'}
+              </span>
+              <span className="text-sm text-gray-600">
+                Estabilidad: {stabilityLevel.toFixed(1)}%
+              </span>
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className="text-sm">
+                Batería: {batteryLevel.toFixed(1)}%
+                <div className="w-20 h-2 bg-gray-200 rounded">
+                  <div 
+                    className={`h-full rounded ${
+                      batteryLevel > 50 ? 'bg-green-500' : 
+                      batteryLevel > 20 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${batteryLevel}%` }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Navbar */}
       <nav className="bg-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-4">
@@ -67,6 +138,11 @@ function DogControl() {
           {/* Control de Movimiento */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Control de Movimiento</h2>
+            
+            {/* Estado actual de movimiento */}
+            <div className="text-sm text-gray-600 mb-4">
+              Estado: {movement.x === 0 && movement.y === 0 ? 'Detenido' : 'En movimiento'}
+            </div>
             
             {/* Controles direccionales */}
             <div className="grid grid-cols-3 gap-2 mb-6">
@@ -117,7 +193,7 @@ function DogControl() {
             </div>
 
             {/* Control de velocidad */}
-            <div className="mb-6">
+            <div>
               <label className="block text-gray-700 mb-2">
                 Velocidad: {speed}%
               </label>
@@ -126,7 +202,11 @@ function DogControl() {
                 min="0"
                 max="100"
                 value={speed}
-                onChange={(e) => setSpeed(parseInt(e.target.value))}
+                onChange={(e) => {
+                  const newSpeed = parseInt(e.target.value);
+                  setSpeed(newSpeed);
+                  logAction('Velocidad', `Ajustada a ${newSpeed}%`);
+                }}
                 className="w-full"
               />
             </div>
@@ -140,36 +220,19 @@ function DogControl() {
             <div className="mb-6">
               <h3 className="text-lg font-semibold text-gray-700 mb-3">Modo de Operación</h3>
               <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => changeMode('normal')}
-                  className={`p-2 rounded ${
-                    selectedMode === 'normal' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Normal
-                </button>
-                <button
-                  onClick={() => changeMode('agile')}
-                  className={`p-2 rounded ${
-                    selectedMode === 'agile' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Ágil
-                </button>
-                <button
-                  onClick={() => changeMode('stable')}
-                  className={`p-2 rounded ${
-                    selectedMode === 'stable' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Estable
-                </button>
+                {['normal', 'agile', 'stable'].map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => changeMode(mode)}
+                    className={`p-2 rounded ${
+                      selectedMode === mode 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -186,6 +249,37 @@ function DogControl() {
               >
                 {isStanding ? 'Sentarse' : 'Pararse'}
               </button>
+            </div>
+          </div>
+
+          {/* Estado del Sistema */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Estado del Sistema</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {Object.entries(systemStatus).map(([key, status]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <span className="capitalize">{key}:</span>
+                  <span className={`px-2 py-1 rounded text-sm ${
+                    status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Historial de Acciones */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Historial de Acciones</h2>
+            <div className="space-y-2">
+              {actionHistory.map((entry, index) => (
+                <div key={index} className="flex justify-between text-sm border-b pb-2">
+                  <span className="font-medium">{entry.action}:</span>
+                  <span className="text-gray-600">{entry.detail}</span>
+                  <span className="text-gray-500">{entry.timestamp}</span>
+                </div>
+              ))}
             </div>
           </div>
 
