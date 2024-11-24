@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { auth } from '../../../firebase/config';
+import { logActivity, ActivityTypes } from '../../../service/logService';
+import { useAuth } from '../../../hook/useAuth';
+import { useNavigate } from 'react-router-dom';
 
 function PepperControl() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [headPosition, setHeadPosition] = useState({ x: 0, y: 0 });
   const [speechText, setSpeechText] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -15,59 +20,184 @@ function PepperControl() {
     audio: 'OK'
   });
 
+  // Efecto para registrar inicio de sesión
+  useEffect(() => {
+    const logInitialAccess = async () => {
+      try {
+        await logActivity(user.uid, ActivityTypes.ROBOT_ACCESS, {
+          robot: 'pepper',
+          action: 'session_start',
+          userEmail: user.email
+        });
+      } catch (error) {
+        console.error('Error logging initial access:', error);
+      }
+    };
+
+    if (user) {
+      logInitialAccess();
+    }
+  }, [user]);
   // Simulación de actualización de estado
   useEffect(() => {
     const interval = setInterval(() => {
       setBatteryLevel(prev => Math.max(0, prev - 0.1));
       setIsConnected(Math.random() > 0.1);
+      
+      // Actualizar estado del sistema aleatoriamente
+      setSystemStatus(prev => ({
+        ...prev,
+        motors: Math.random() > 0.1 ? 'OK' : 'ERROR',
+        sensors: Math.random() > 0.1 ? 'OK' : 'ERROR'
+      }));
     }, 5000);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Función para controlar la cabeza con límites
-  const handleHeadMovement = (direction) => {
-    switch(direction) {
-      case 'up':
-        setHeadPosition(prev => ({ ...prev, y: Math.min(45, prev.y + 5) }));
-        break;
-      case 'down':
-        setHeadPosition(prev => ({ ...prev, y: Math.max(-45, prev.y - 5) }));
-        break;
-      case 'left':
-        setHeadPosition(prev => ({ ...prev, x: Math.max(-45, prev.x - 5) }));
-        break;
-      case 'right':
-        setHeadPosition(prev => ({ ...prev, x: Math.min(45, prev.x + 5) }));
-        break;
+  // Monitorear cambios en la conexión
+  useEffect(() => {
+    const logConnectionChange = async () => {
+      try {
+        await logActivity(user.uid, ActivityTypes.ROBOT_CONTROL, {
+          robot: 'pepper',
+          action: 'connection_status',
+          status: isConnected ? 'connected' : 'disconnected',
+          userEmail: user.email
+        });
+      } catch (error) {
+        console.error('Error logging connection change:', error);
+      }
+    };
+
+    if (user) {
+      logConnectionChange();
     }
-    console.log(`Moviendo cabeza: ${direction}, Posición: X:${headPosition.x}° Y:${headPosition.y}°`);
+  }, [isConnected, user]);
+
+  // Monitorear cambios críticos en el estado del sistema
+  useEffect(() => {
+    const logSystemStatusChange = async () => {
+      const errors = Object.entries(systemStatus)
+        .filter(([_, status]) => status !== 'OK')
+        .map(([key]) => key);
+
+      if (errors.length > 0) {
+        try {
+          await logActivity(user.uid, ActivityTypes.ERROR, {
+            robot: 'pepper',
+            action: 'system_status',
+            errors,
+            userEmail: user.email
+          });
+        } catch (error) {
+          console.error('Error logging system status:', error);
+        }
+      }
+    };
+
+    if (user) {
+      logSystemStatusChange();
+    }
+  }, [systemStatus, user]);
+
+  // Función para controlar la cabeza con límites
+  const handleHeadMovement = async (direction) => {
+    try {
+      let newX = headPosition.x;
+      let newY = headPosition.y;
+
+      switch(direction) {
+        case 'up':
+          newY = Math.min(45, headPosition.y + 5);
+          break;
+        case 'down':
+          newY = Math.max(-45, headPosition.y - 5);
+          break;
+        case 'left':
+          newX = Math.max(-45, headPosition.x - 5);
+          break;
+        case 'right':
+          newX = Math.min(45, headPosition.x + 5);
+          break;
+      }
+
+      setHeadPosition({ x: newX, y: newY });
+      
+      // Registrar actividad
+      await logActivity(user.uid, ActivityTypes.ROBOT_CONTROL, {
+        robot: 'pepper',
+        action: 'head_movement',
+        direction,
+        position: { x: newX, y: newY },
+        userEmail: user.email
+      });
+    } catch (error) {
+      console.error('Error en movimiento de cabeza:', error);
+    }
   };
 
   // Función para el habla con historial
-  const handleSpeak = () => {
+  const handleSpeak = async () => {
     if (speechText.trim()) {
-      console.log('Pepper dice:', speechText);
-      setVoiceHistory(prev => [{
-        type: 'speak',
-        text: speechText,
-        timestamp: new Date().toLocaleTimeString()
-      }, ...prev.slice(0, 4)]);
-      setSpeechText('');
+      try {
+        setVoiceHistory(prev => [{
+          type: 'speak',
+          text: speechText,
+          timestamp: new Date().toLocaleTimeString()
+        }, ...prev.slice(0, 4)]);
+
+        await logActivity(user.uid, ActivityTypes.ROBOT_CONTROL, {
+          robot: 'pepper',
+          action: 'speak',
+          text: speechText,
+          userEmail: user.email
+        });
+
+        setSpeechText('');
+      } catch (error) {
+        console.error('Error en comando de voz:', error);
+      }
     }
   };
 
   // Función para escuchar
-  const toggleListening = () => {
-    setIsListening(!isListening);
-    setVoiceHistory(prev => [{
-      type: 'listen',
-      text: !isListening ? 'Inicio de escucha' : 'Fin de escucha',
-      timestamp: new Date().toLocaleTimeString()
-    }, ...prev.slice(0, 4)]);
-    console.log('Estado de escucha:', !isListening);
+  const toggleListening = async () => {
+    try {
+      const newListeningState = !isListening;
+      setIsListening(newListeningState);
+      
+      setVoiceHistory(prev => [{
+        type: 'listen',
+        text: newListeningState ? 'Inicio de escucha' : 'Fin de escucha',
+        timestamp: new Date().toLocaleTimeString()
+      }, ...prev.slice(0, 4)]);
+
+      await logActivity(user.uid, ActivityTypes.ROBOT_CONTROL, {
+        robot: 'pepper',
+        action: 'listening',
+        state: newListeningState,
+        userEmail: user.email
+      });
+    } catch (error) {
+      console.error('Error en cambio de estado de escucha:', error);
+    }
   };
 
+  // Función para manejar la desconexión
+  const handleDisconnect = async () => {
+    try {
+      await logActivity(user.uid, ActivityTypes.ROBOT_ACCESS, {
+        robot: 'pepper',
+        action: 'session_end',
+        userEmail: user.email
+      });
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Error al registrar desconexión:', error);
+      navigate('/dashboard');
+    }
+  };
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Barra de estado */}
@@ -104,9 +234,9 @@ function PepperControl() {
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-bold text-gray-800">Control Robot Pepper</h1>
             <div className="flex items-center gap-4">
-              <span className="text-gray-600">{auth.currentUser?.email}</span>
+              <span className="text-gray-600">{user?.email}</span>
               <button
-                onClick={() => window.history.back()}
+                onClick={handleDisconnect}
                 className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors"
               >
                 Volver
@@ -115,7 +245,6 @@ function PepperControl() {
           </div>
         </div>
       </nav>
-
       {/* Panel de Control */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -129,7 +258,8 @@ function PepperControl() {
               <div></div>
               <button
                 onClick={() => handleHeadMovement('up')}
-                className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+                className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
+                disabled={!isConnected}
               >
                 Arriba
               </button>
@@ -137,7 +267,8 @@ function PepperControl() {
               
               <button
                 onClick={() => handleHeadMovement('left')}
-                className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+                className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
+                disabled={!isConnected}
               >
                 Izquierda
               </button>
@@ -146,7 +277,8 @@ function PepperControl() {
               </div>
               <button
                 onClick={() => handleHeadMovement('right')}
-                className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+                className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
+                disabled={!isConnected}
               >
                 Derecha
               </button>
@@ -154,7 +286,8 @@ function PepperControl() {
               <div></div>
               <button
                 onClick={() => handleHeadMovement('down')}
-                className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+                className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
+                disabled={!isConnected}
               >
                 Abajo
               </button>
@@ -177,10 +310,12 @@ function PepperControl() {
                     onChange={(e) => setSpeechText(e.target.value)}
                     className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Escribe algo..."
+                    disabled={!isConnected}
                   />
                   <button
                     onClick={handleSpeak}
-                    className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                    className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
+                    disabled={!isConnected || !speechText.trim()}
                   >
                     Hablar
                   </button>
@@ -194,14 +329,14 @@ function PepperControl() {
                     isListening 
                       ? 'bg-red-500 hover:bg-red-600' 
                       : 'bg-green-500 hover:bg-green-600'
-                  } text-white`}
+                  } text-white disabled:opacity-50`}
+                  disabled={!isConnected}
                 >
                   {isListening ? 'Dejar de Escuchar' : 'Empezar a Escuchar'}
                 </button>
               </div>
             </div>
           </div>
-
           {/* Estado del Sistema */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Estado del Sistema</h2>
@@ -222,23 +357,40 @@ function PepperControl() {
           {/* Historial de Comandos */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Historial de Comandos</h2>
-            <div className="space-y-2">
-              {voiceHistory.map((entry, index) => (
-                <div key={index} className="flex justify-between text-sm border-b pb-2">
-                  <span className={entry.type === 'speak' ? 'text-blue-600' : 'text-green-600'}>
-                    {entry.text}
-                  </span>
-                  <span className="text-gray-500">{entry.timestamp}</span>
-                </div>
-              ))}
-            </div>
+            {voiceHistory.length > 0 ? (
+              <div className="space-y-2">
+                {voiceHistory.map((entry, index) => (
+                  <div key={index} className="flex justify-between text-sm border-b pb-2">
+                    <span className={`${
+                      entry.type === 'speak' ? 'text-blue-600' : 'text-green-600'
+                    }`}>
+                      {entry.text}
+                    </span>
+                    <span className="text-gray-500">{entry.timestamp}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-gray-500">
+                No hay comandos registrados
+              </div>
+            )}
           </div>
 
           {/* Video Feed */}
           <div className="bg-white rounded-lg shadow-md p-6 md:col-span-2">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Video en Vivo</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">Video en Vivo</h2>
+              <span className={`px-2 py-1 rounded text-xs ${
+                isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
+                {isConnected ? 'Transmitiendo' : 'Sin señal'}
+              </span>
+            </div>
             <div className="bg-gray-200 aspect-video rounded flex items-center justify-center">
-              <span className="text-gray-600">Feed de Video</span>
+              <span className="text-gray-600">
+                {isConnected ? 'Feed de Video' : 'Cámara Desconectada'}
+              </span>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
-// src/firebase/config.js
+// src/firebase/config.jsx
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableNetwork, disableNetwork } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCh_MbRoRH8sVJOkUOHSEskcGx9nvib_4M",
@@ -19,5 +19,9 @@ const app = initializeApp(firebaseConfig);
 // Initialize services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Funciones de red
+export const enableFirestoreNetwork = () => enableNetwork(db);
+export const disableFirestoreNetwork = () => disableNetwork(db);
 
 export default app;
