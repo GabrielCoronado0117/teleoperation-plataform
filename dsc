@@ -1,0 +1,17 @@
+[33mcommit 455858ecd7f19c873f4b3a032a5982f81724f0b5[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Gabriel Iván Ramírez Coronado <gabriel117.ramirez@gmail.com>
+Date:   Mon Nov 25 02:08:00 2024 +0900
+
+    Gestiando Logs
+
+[33mcommit 1b6fecfd6bf701ad493399fa9768df60b3f1e81e[m
+Author: Gabriel Iván Ramírez Coronado <gabriel117.ramirez@gmail.com>
+Date:   Thu Nov 21 11:08:13 2024 +0900
+
+    Dashboard Actualizado
+
+[33mcommit 99225be0a445d6b9d4eb8bbd98f303ce1a957fd3[m
+Author: Gabriel Iván Ramírez Coronado <gabriel117.ramirez@gmail.com>
+Date:   Wed Nov 20 13:32:19 2024 +0900
+
+    Initial commit: Teleoperation-Dashboard

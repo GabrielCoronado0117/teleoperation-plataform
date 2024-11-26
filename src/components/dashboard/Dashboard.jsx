@@ -3,6 +3,8 @@ import { useAuth } from '../../hook/useAuth';
 import { getUserData as getUser } from '../../service/authService';
 import { logActivity, ActivityTypes } from '../../service/logService';
 import { useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+import { auth } from '../../firebase/config';
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -10,6 +12,17 @@ function Dashboard() {
   const [userPermissions, setUserPermissions] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate('/');
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+      setError('Error al cerrar sesión: ' + error.message);
+    }
+  };
 
   useEffect(() => {
     const loadUserPermissions = async () => {
@@ -73,6 +86,12 @@ function Dashboard() {
             <h1 className="text-2xl font-bold text-gray-800">Panel de Control</h1>
             <div className="flex items-center gap-4">
               <span className="text-gray-600">{user?.email}</span>
+              <button
+                onClick={handleLogout}
+                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+              >
+                Cerrar Sesión
+              </button>
               {userPermissions?.isAdmin && (
                 <button
                   onClick={() => window.location.hash = 'admin'}
