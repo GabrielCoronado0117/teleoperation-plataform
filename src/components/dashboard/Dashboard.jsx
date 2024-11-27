@@ -8,11 +8,10 @@ import { auth } from '../../firebase/config';
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, reloadUserData } = useAuth();
   const [userPermissions, setUserPermissions] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
 
   const handleLogout = async () => {
     try {
@@ -24,32 +23,60 @@ function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    const loadUserPermissions = async () => {
-      try {
-        if (user) {
+  const loadUserPermissions = async () => {
+    try {
+      if (user) {
+        // Primero intentamos recargar los datos del usuario
+        const updatedUserData = await reloadUserData(user.uid);
+        if (!updatedUserData) {
+          // Si no se pudo recargar, intentamos obtener los datos normalmente
           const userData = await getUser(user.uid);
           setUserPermissions(userData?.permissions || {});
-          
-          // Registrar acceso al dashboard
-          await logActivity(user.uid, ActivityTypes.ROBOT_ACCESS, {
-            action: 'dashboard_access',
-            userEmail: user.email
-          });
+        } else {
+          setUserPermissions(updatedUserData?.permissions || {});
         }
-      } catch (err) {
-        setError('Error al cargar permisos: ' + err.message);
-      } finally {
-        setLoading(false);
+        
+        // Registrar acceso al dashboard
+        await logActivity(user.uid, ActivityTypes.ROBOT_ACCESS, {
+          action: 'dashboard_access',
+          userEmail: user.email
+        });
       }
-    };
+    } catch (err) {
+      console.error('Error loading permissions:', err);
+      setError('Error al cargar permisos: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Efecto inicial para cargar permisos
+  useEffect(() => {
     loadUserPermissions();
   }, [user]);
 
+  // Efecto adicional para recargar cuando cambia el usuario
+  useEffect(() => {
+    if (user) {
+      const reloadInterval = setInterval(() => {
+        loadUserPermissions();
+      }, 5000); // Recargar cada 5 segundos
+
+      return () => clearInterval(reloadInterval);
+    }
+  }, [user]);
 
   const handleRobotAccess = async (robotType) => {
     try {
+      // Recargar permisos antes de intentar acceder al robot
+      await loadUserPermissions();
+
+      // Verificar si tiene permiso
+      if (!userPermissions?.[robotType]) {
+        setError('No tienes permiso para acceder a este robot.');
+        return;
+      }
+
       await logActivity(user.uid, ActivityTypes.ROBOT_ACCESS, {
         robotType,
         action: 'robot_selection',
@@ -57,18 +84,21 @@ function Dashboard() {
       });
       navigate(`/${robotType}`);
     } catch (error) {
-      console.error('Error logging robot access:', error);
+      console.error('Error accessing robot:', error);
+      setError('Error al acceder al robot: ' + error.message);
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-gray-600">Cargando...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+          <div className="text-gray-600">Cargando dashboard...</div>
+        </div>
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">

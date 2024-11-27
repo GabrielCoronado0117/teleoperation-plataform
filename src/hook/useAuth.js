@@ -1,5 +1,6 @@
 // src/hook/useAuth.js
-import { useState, useEffect } from 'react';
+// src/hook/useAuth.js
+import { useState, useEffect, useCallback } from 'react';
 import { auth } from '../firebase/config';
 import { signOut } from 'firebase/auth';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -11,52 +12,65 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        try {
-          // Intentar obtener los datos del usuario
-          let data = await getUserData(user.uid);
-          
-          // Si el usuario no existe en la base de datos, crearlo
-          if (!data) {
-            data = await createUserRecord(user);
-          } else if (user.email === 'mirainnovationadm@gmail.com' && data.role !== 'admin') {
-            // Si es el email de admin pero no tiene rol admin, recrear el usuario
-            data = await createUserRecord(user);
-          }
-          
-          setUserData(data);
-        } catch (error) {
-          console.error('Error al cargar datos de usuario:', error);
-          setError(error.message);
-        }
-      } else {
-        setUserData(null);
-      }
-      setLoading(false);
-    });
+  // Función para recargar datos del usuario
+  const reloadUserData = useCallback(async (uid) => {
+    try {
+      const data = await getUserData(uid);
+      setUserData(data);
+      return data;
+    } catch (error) {
+      console.error('Error reloading user data:', error);
+      setError(error.message);
+      return null;
+    }
+  }, []);
 
-    return () => unsubscribe();
+  useEffect(() => {
+    let unsubscribe;
+    
+    const initializeAuth = async () => {
+      setLoading(true);
+      try {
+        unsubscribe = onAuthStateChanged(auth, async (user) => {
+          setUser(user);
+          if (user) {
+            try {
+              let data = await getUserData(user.uid);
+              
+              if (!data || (user.email === 'mirainnovationadm@gmail.com' && data.role !== 'admin')) {
+                data = await createUserRecord(user);
+              }
+              
+              setUserData(data);
+            } catch (error) {
+              console.error('Error loading user data:', error);
+              setError(error.message);
+            }
+          } else {
+            setUserData(null);
+          }
+          setLoading(false);
+        });
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        setError(error.message);
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+    return () => unsubscribe?.();
   }, []);
 
   const logout = async () => {
     try {
       await signOut(auth);
+      setUserData(null);
+      setUser(null);
     } catch (error) {
-      console.error('Error al cerrar sesión:', error);
+      console.error('Error signing out:', error);
       throw error;
     }
-  };
-
-  const checkPermission = (robotType) => {
-    return userData?.permissions?.[robotType] || false;
-  };
-
-  const isAdmin = () => {
-    // Verificar tanto el rol como el email
-    return userData?.role === 'admin' || user?.email === 'mirainnovationadm@gmail.com';
   };
 
   return {
@@ -65,7 +79,8 @@ export function useAuth() {
     loading,
     error,
     logout,
-    checkPermission,
-    isAdmin
+    reloadUserData,
+    checkPermission: (robotType) => userData?.permissions?.[robotType] || false,
+    isAdmin: () => userData?.role === 'admin' || user?.email === 'mirainnovationadm@gmail.com'
   };
 }
