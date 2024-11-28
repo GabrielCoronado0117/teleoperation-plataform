@@ -306,8 +306,20 @@ function ArmControl() {
           {/* Visualización 3D o Cámara */}
           <div className="bg-white rounded-lg shadow-md p-6 md:col-span-2">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Visualización del Brazo</h2>
-            <div className="bg-gray-200 aspect-video rounded flex items-center justify-center">
-              <span className="text-gray-600">Vista del Brazo Robótico</span>
+            <div className="bg-gray-200 aspect-video rounded overflow-hidden">
+              <img
+                src="http://14.10.2.192:8065/video_feed"
+                alt="Video Feed del Brazo Robótico"
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.classList.add('hidden');
+                  e.target.nextSibling?.classList.remove('hidden');
+                }}
+              />
+              <div className="hidden w-full h-full flex items-center justify-center">
+                <span className="text-gray-600">Error al cargar el video feed</span>
+              </div>
             </div>
           </div>
         </div>
