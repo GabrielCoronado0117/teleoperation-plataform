@@ -54,7 +54,7 @@ function ArmControl() {
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        const response = await fetch('http://192.168.10.141:8079/');
+        const response = await fetch('http://14.10.2.192:8079/');
         if (response.ok) {
           setIsConnected(true);
           await logActivity(user.uid, ActivityTypes.ROBOT_ACCESS, {
@@ -95,7 +95,7 @@ function ArmControl() {
       const newJoints = { ...joints, [joint]: Number(value) };
       setJoints(newJoints);
       
-      const response = await fetch('http://192.168.10.141:8079/control', {
+      const response = await fetch('http://http://14.10.2.192:8079/control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -123,7 +123,7 @@ function ArmControl() {
   // Manejar comando Home
   const handleHome = async () => {
     try {
-      const response = await fetch('http://192.168.10.141:8079/home', {
+      const response = await fetch('http://14.10.2.192:8079/home', {
         method: 'POST'
       });
       
@@ -213,7 +213,7 @@ function ArmControl() {
             <div className="aspect-video bg-black rounded-lg overflow-hidden">
               {isConnected ? (
                 <img
-                  src="http://192.168.10.141:8079/video_feed"
+                  src="http://14.10.2.192:8079/video_feed"
                   alt="Robot Camera Feed"
                   className="w-full h-full object-contain"
                 />
