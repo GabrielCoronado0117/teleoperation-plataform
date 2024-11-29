@@ -308,7 +308,7 @@ function ArmControl() {
             <h2 className="text-xl font-bold text-gray-800 mb-4">Visualización del Brazo</h2>
             <div className="bg-gray-200 aspect-video rounded overflow-hidden">
               <img
-                src="http://14.10.2.192:8065/video_feed"
+                src="http://192.168.10.141:8079/video_feed"
                 alt="Video Feed del Brazo Robótico"
                 className="w-full h-full object-contain"
                 onError={(e) => {
