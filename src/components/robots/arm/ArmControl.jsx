@@ -1,57 +1,84 @@
 import React, { useState, useEffect } from 'react';
 import { auth } from '../../../firebase/config';
+import { logActivity, ActivityTypes } from '../../../service/logService';
+import { useAuth } from '../../../hook/useAuth';
 
 function ArmControl() {
+  const { user } = useAuth();
+  // Estados para la integración con Flask
   const [joints, setJoints] = useState({
-    base: 0,
-    shoulder: 0,
-    elbow: 0,
-    wrist: 0,
-    gripper: 0
+    x: 160,
+    y: 0,
+    z: 100,
+    r: 0
   });
+  
+  const jointLimits = {
+    x: { min: 170, max: 240 },
+    y: { min: -150, max: 150 },
+    z: { min: 0, max: 100 },
+    r: { min: -180, max: 180 }
+  };
 
-  const [jointLimits] = useState({
-    base: { min: -180, max: 180 },
-    shoulder: { min: -90, max: 90 },
-    elbow: { min: -180, max: 180 },
-    wrist: { min: -180, max: 180 },
-    gripper: { min: 0, max: 100 }
-  });
-
-  const [savedPositions, setSavedPositions] = useState([
-    { name: 'Home', positions: { base: 0, shoulder: 0, elbow: 0, wrist: 0, gripper: 0 } },
-    { name: 'Reposo', positions: { base: 0, shoulder: -45, elbow: -90, wrist: 0, gripper: 0 } }
-  ]);
-
-  const [gripperState, setGripperState] = useState(false);
-  const [speed, setSpeed] = useState(50);
-  const [selectedMode, setSelectedMode] = useState('manual'); // manual, automatic
+  // Estados originales del diseño
+  const [loading, setLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const [responseMessage, setResponseMessage] = useState('');
   const [batteryLevel, setBatteryLevel] = useState(100);
-  const [isConnected, setIsConnected] = useState(true);
+  const [engineTemp, setEngineTemp] = useState(90);
   const [actionHistory, setActionHistory] = useState([]);
   const [systemStatus, setSystemStatus] = useState({
     motors: 'OK',
     sensors: 'OK',
-    gripper: 'OK',
+    camera: 'OK',
     encoders: 'OK'
   });
 
-  // Simulación de actualización de estado
+  // Efecto para simular datos del sistema
   useEffect(() => {
     const interval = setInterval(() => {
       setBatteryLevel(prev => Math.max(0, prev - 0.1));
-      setIsConnected(Math.random() > 0.1);
+      setEngineTemp(prev => 90 + Math.sin(Date.now() / 1000) * 5);
       
-      // Actualizar estado del sistema aleatoriamente
       setSystemStatus(prev => ({
         ...prev,
         motors: Math.random() > 0.1 ? 'OK' : 'ERROR',
-        sensors: Math.random() > 0.1 ? 'OK' : 'ERROR',
+        sensors: Math.random() > 0.1 ? 'OK' : 'ERROR'
       }));
     }, 5000);
 
     return () => clearInterval(interval);
   }, []);
+
+  // Efecto para conexión con servidor Flask
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const response = await fetch('http://192.168.10.141:8079/');
+        if (response.ok) {
+          setIsConnected(true);
+          await logActivity(user.uid, ActivityTypes.ROBOT_ACCESS, {
+            robot: 'arm',
+            action: 'connection',
+            status: 'connected',
+            userEmail: user.email
+          });
+        } else {
+          setIsConnected(false);
+        }
+      } catch (error) {
+        console.error('Error checking connection:', error);
+        setIsConnected(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkConnection();
+    const interval = setInterval(checkConnection, 5000);
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Función para registrar acciones
   const logAction = (action, detail) => {
@@ -62,42 +89,69 @@ function ArmControl() {
     }, ...prev.slice(0, 4)]);
   };
 
-  // Función para controlar las articulaciones
-  const handleJointChange = (joint, value) => {
-    const limitedValue = Math.min(
-      jointLimits[joint].max,
-      Math.max(jointLimits[joint].min, parseInt(value))
+  // Manejar cambios en las articulaciones
+  const handleJointChange = async (joint, value) => {
+    try {
+      const newJoints = { ...joints, [joint]: Number(value) };
+      setJoints(newJoints);
+      
+      const response = await fetch('http://192.168.10.141:8079/control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newJoints)
+      });
+
+      const data = await response.json();
+      setResponseMessage(data.message);
+      logAction('Movimiento', `${joint.toUpperCase()}: ${value}`);
+
+      await logActivity(user.uid, ActivityTypes.ROBOT_CONTROL, {
+        robot: 'arm',
+        action: 'joint_move',
+        joint,
+        value,
+        userEmail: user.email
+      });
+    } catch (error) {
+      console.error('Error moving joint:', error);
+      setResponseMessage('Error al mover articulación');
+    }
+  };
+
+  // Manejar comando Home
+  const handleHome = async () => {
+    try {
+      const response = await fetch('http://192.168.10.141:8079/home', {
+        method: 'POST'
+      });
+      
+      const data = await response.json();
+      setResponseMessage(data.message);
+      logAction('Sistema', 'Movido a posición Home');
+
+      await logActivity(user.uid, ActivityTypes.ROBOT_CONTROL, {
+        robot: 'arm',
+        action: 'home',
+        userEmail: user.email
+      });
+    } catch (error) {
+      console.error('Error moving to home:', error);
+      setResponseMessage('Error al mover a Home');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+          <div className="text-gray-600">Conectando con el robot...</div>
+        </div>
+      </div>
     );
-    
-    setJoints(prev => ({
-      ...prev,
-      [joint]: limitedValue
-    }));
-    
-    logAction('Movimiento', `${joint}: ${limitedValue}°`);
-  };
-
-  // Función para el gripper
-  const toggleGripper = () => {
-    setGripperState(!gripperState);
-    logAction('Gripper', gripperState ? 'Abierto' : 'Cerrado');
-  };
-
-  // Función para guardar posición actual
-  const saveCurrentPosition = (name) => {
-    const newPosition = {
-      name,
-      positions: { ...joints }
-    };
-    setSavedPositions(prev => [...prev, newPosition]);
-    logAction('Posición Guardada', name);
-  };
-
-  // Función para cargar posición guardada
-  const loadPosition = (position) => {
-    setJoints(position.positions);
-    logAction('Posición Cargada', position.name);
-  };
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -111,7 +165,7 @@ function ArmControl() {
                 {isConnected ? 'Conectado' : 'Desconectado'}
               </span>
               <span className="text-sm text-gray-600">
-                Modo: {selectedMode.charAt(0).toUpperCase() + selectedMode.slice(1)}
+                Temp: {engineTemp.toFixed(1)}°C
               </span>
             </div>
             <div className="flex items-center space-x-4">
@@ -138,7 +192,7 @@ function ArmControl() {
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-bold text-gray-800">Control Brazo Robot</h1>
             <div className="flex items-center gap-4">
-              <span className="text-gray-600">{auth.currentUser?.email}</span>
+              <span className="text-gray-600">{user?.email}</span>
               <button
                 onClick={() => window.history.back()}
                 className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors"
@@ -150,19 +204,35 @@ function ArmControl() {
         </div>
       </nav>
 
-      {/* Panel de Control */}
+      {/* Contenido Principal */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Video Feed */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Transmisión en Vivo</h2>
+            <div className="aspect-video bg-black rounded-lg overflow-hidden">
+              {isConnected ? (
+                <img
+                  src="http://192.168.10.141:8079/video_feed"
+                  alt="Robot Camera Feed"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white">
+                  No hay señal de video
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Control de Articulaciones */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Control de Articulaciones</h2>
-            
-            {/* Sliders para cada articulación */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               {Object.entries(joints).map(([joint, value]) => (
                 <div key={joint}>
                   <label className="block text-gray-700 mb-2">
-                    {joint.charAt(0).toUpperCase() + joint.slice(1)}: {value}°
+                    {joint.toUpperCase()}: {value}
                   </label>
                   <input
                     type="range"
@@ -170,107 +240,23 @@ function ArmControl() {
                     max={jointLimits[joint].max}
                     value={value}
                     onChange={(e) => handleJointChange(joint, e.target.value)}
-                    className="w-full"
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                   />
-                  <div className="text-xs text-gray-500">
-                    Límites: {jointLimits[joint].min}° a {jointLimits[joint].max}°
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>{jointLimits[joint].min}</span>
+                    <span>{jointLimits[joint].max}</span>
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
 
-          {/* Control de Gripper y Opciones */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Control de Gripper</h2>
-            
-            {/* Control de Gripper */}
-            <div className="mb-6">
               <button
-                onClick={toggleGripper}
-                className={`w-full p-4 rounded text-white ${
-                  gripperState 
-                    ? 'bg-red-500 hover:bg-red-600' 
-                    : 'bg-green-500 hover:bg-green-600'
-                }`}
+                onClick={handleHome}
+                className="w-full mt-4 bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors disabled:opacity-50"
+                disabled={!isConnected}
               >
-                {gripperState ? 'Abrir Gripper' : 'Cerrar Gripper'}
+                Mover a Home
               </button>
             </div>
-
-            {/* Control de Velocidad */}
-            <div className="mb-6">
-              <label className="block text-gray-700 mb-2">
-                Velocidad: {speed}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={speed}
-                onChange={(e) => {
-                  const newSpeed = parseInt(e.target.value);
-                  setSpeed(newSpeed);
-                  logAction('Velocidad', `Ajustada a ${newSpeed}%`);
-                }}
-                className="w-full"
-              />
-            </div>
-
-            {/* Selector de Modo */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">Modo de Operación</h3>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => {
-                    setSelectedMode('manual');
-                    logAction('Modo', 'Cambiado a Manual');
-                  }}
-                  className={`p-2 rounded ${
-                    selectedMode === 'manual' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Manual
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedMode('automatic');
-                    logAction('Modo', 'Cambiado a Automático');
-                  }}
-                  className={`p-2 rounded ${
-                    selectedMode === 'automatic' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Automático
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Posiciones Guardadas */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Posiciones Guardadas</h2>
-            <div className="grid grid-cols-2 gap-2">
-              {savedPositions.map((pos, index) => (
-                <button
-                  key={index}
-                  onClick={() => loadPosition(pos)}
-                  className="p-2 bg-gray-100 rounded hover:bg-gray-200"
-                >
-                  {pos.name}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => saveCurrentPosition(`Posición ${savedPositions.length + 1}`)}
-              className="mt-4 w-full p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Guardar Posición Actual
-            </button>
           </div>
 
           {/* Estado del Sistema */}
@@ -288,41 +274,29 @@ function ArmControl() {
                 </div>
               ))}
             </div>
-
-            {/* Historial de Acciones */}
-            <div className="mt-4">
-              <h3 className="font-semibold mb-2">Últimas Acciones:</h3>
-              <div className="space-y-2 text-sm">
-                {actionHistory.map((entry, index) => (
-                  <div key={index} className="flex justify-between border-b pb-1">
-                    <span>{entry.action}: {entry.detail}</span>
-                    <span className="text-gray-500">{entry.timestamp}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
 
-          {/* Visualización 3D o Cámara */}
-          <div className="bg-white rounded-lg shadow-md p-6 md:col-span-2">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Visualización del Brazo</h2>
-            <div className="bg-gray-200 aspect-video rounded overflow-hidden">
-              <img
-                src="http://192.168.10.141:8079/video_feed"
-                alt="Video Feed del Brazo Robótico"
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.classList.add('hidden');
-                  e.target.nextSibling?.classList.remove('hidden');
-                }}
-              />
-              <div className="hidden w-full h-full flex items-center justify-center">
-                <span className="text-gray-600">Error al cargar el video feed</span>
-              </div>
+          {/* Historial de Acciones */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Historial de Acciones</h2>
+            <div className="space-y-2">
+              {actionHistory.map((entry, index) => (
+                <div key={index} className="flex justify-between text-sm border-b pb-2">
+                  <span className="font-medium">{entry.action}:</span>
+                  <span className="text-gray-600">{entry.detail}</span>
+                  <span className="text-gray-500">{entry.timestamp}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
+
+        {/* Mensajes de Respuesta */}
+        {responseMessage && (
+          <div className="mt-4 p-4 bg-blue-50 text-blue-700 rounded-lg">
+            {responseMessage}
+          </div>
+        )}
       </div>
     </div>
   );
