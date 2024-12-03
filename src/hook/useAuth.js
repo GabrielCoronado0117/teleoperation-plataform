@@ -16,7 +16,19 @@ export function useAuth() {
     try {
       const data = await getUserData(uid);
       if (data) {
-        const isAdminUser = auth.currentUser?.email === 'mirainnovationadm@gmail.com';
+        // Verifica si es el email de admin
+        const isAdminUser = user?.email === 'mirainnovationadm@gmail.com';
+        if (isAdminUser) {
+          // Si es admin, asignar todos los permisos
+          const adminPermissions = {
+            pepper: true,
+            spider: true,
+            dog: true,
+            teledriving: true,
+            robotArm: true
+          };
+          data.permissions = adminPermissions;
+        }
         setUserData({ ...data, role: isAdminUser ? 'admin' : data.role });
       }
       return data;
@@ -25,7 +37,7 @@ export function useAuth() {
       setError(error.message);
       return null;
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let mounted = true;
@@ -97,6 +109,11 @@ export function useAuth() {
       setLoading(false);
     }
   };
+
+  const checkPermission = useCallback((robotType) => {
+    return userData?.role === 'admin' || userData?.permissions?.[robotType] || false;
+  }, [userData]);
+
 
   const isAdmin = useCallback(() => {
     const isAdminEmail = user?.email === 'mirainnovationadm@gmail.com';

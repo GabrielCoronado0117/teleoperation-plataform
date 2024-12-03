@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { auth } from '../../../firebase/config';
 import { logActivity, ActivityTypes } from '../../../service/logService';
 import { useAuth } from '../../../hook/useAuth';
+import JoystickControllerArm from './JoystickControllerArm';
 
 function ArmControl() {
   const { user } = useAuth();
@@ -33,6 +34,43 @@ function ArmControl() {
     camera: 'OK',
     encoders: 'OK'
   });
+
+  const handleJoystickChange = async (deltaPosition) => {
+    if (!isConnected) return;
+    
+    const newJoints = {
+      x: Math.max(jointLimits.x.min, Math.min(jointLimits.x.max, joints.x + deltaPosition.x)),
+      y: Math.max(jointLimits.y.min, Math.min(jointLimits.y.max, joints.y + deltaPosition.y)),
+      z: Math.max(jointLimits.z.min, Math.min(jointLimits.z.max, joints.z + deltaPosition.z)),
+      r: Math.max(jointLimits.r.min, Math.min(jointLimits.r.max, joints.r + deltaPosition.r))
+    };
+
+    setJoints(newJoints);
+    
+    try {
+      const response = await fetch('http://14.10.2.192:8079/control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newJoints)
+      });
+
+      const data = await response.json();
+      setResponseMessage(data.message);
+      logAction('Joystick', `X:${deltaPosition.x.toFixed(2)} Y:${deltaPosition.y.toFixed(2)} Z:${deltaPosition.z.toFixed(2)} R:${deltaPosition.r.toFixed(2)}`);
+
+      await logActivity(user.uid, ActivityTypes.ROBOT_CONTROL, {
+        robot: 'arm',
+        action: 'joystick_move',
+        position: newJoints,
+        userEmail: user.email
+      });
+    } catch (error) {
+      console.error('Error moving joint:', error);
+      setResponseMessage('Error al mover articulación');
+    }
+  };
 
   // Efecto para simular datos del sistema
   useEffect(() => {
@@ -95,7 +133,7 @@ function ArmControl() {
       const newJoints = { ...joints, [joint]: Number(value) };
       setJoints(newJoints);
       
-      const response = await fetch('http://http://14.10.2.192:8079/control', {
+      const response = await fetch('http://14.10.2.192:8079/control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
