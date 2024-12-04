@@ -7,5 +7,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+  },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://14.10.2.192:8070',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
   }
 })

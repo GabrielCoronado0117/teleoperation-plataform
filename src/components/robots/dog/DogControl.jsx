@@ -12,6 +12,7 @@ function DogControl() {
   const [isConnected, setIsConnected] = useState(false);
   const [stabilityLevel, setStabilityLevel] = useState(100);
   const [actionHistory, setActionHistory] = useState([]);
+  const [isJoystickConnected, setIsJoystickConnected] = useState(false);
   const [systemStatus, setSystemStatus] = useState({
     motors: 'OK',
     balance: 'OK',
@@ -20,6 +21,7 @@ function DogControl() {
   });
   const [videoFeed, setVideoFeed] = useState('');
   const [socket, setSocket] = useState(null);
+
   useEffect(() => {
     const newSocket = io('http://14.10.2.192:8066', {
       transports: ['websocket'],
@@ -64,7 +66,7 @@ function DogControl() {
   };
   
   const handleMovement = (direction) => {
-    if (!socket || !isConnected) return;
+    if (!socket || !isConnected || isJoystickConnected) return;
   
     let x_speed = 0;
     let y_speed = 0;
@@ -87,6 +89,7 @@ function DogControl() {
     setMovement({ x: x_speed, y: y_speed });
     logAction('Movimiento', `Dirección: ${direction}, Velocidad: ${speed}%`);
   };
+
   const toggleStance = () => {
     if (!socket || !isConnected) return;
     const command = isStanding ? 'stand_down' : 'stand_up';
@@ -111,10 +114,28 @@ function DogControl() {
     logAction('Modo', `Cambiado a: ${mode}`);
   };
   
-  // Añadir manejo de eventos de teclado
+  // Manejo de eventos de teclado actualizado
   useEffect(() => {
+    const checkGamepad = () => {
+      const gamepads = navigator.getGamepads();
+      const hasGamepad = Object.values(gamepads).some(gamepad => gamepad !== null);
+      setIsJoystickConnected(hasGamepad);
+    };
+
+    window.addEventListener('gamepadconnected', () => {
+      checkGamepad();
+      logAction('Control', 'Joystick conectado');
+    });
+    
+    window.addEventListener('gamepaddisconnected', () => {
+      checkGamepad();
+      logAction('Control', 'Joystick desconectado');
+    });
+    
+    checkGamepad(); // Verificar al inicio
+
     const handleKeyDown = (e) => {
-      if (!isConnected) return;
+      if (!isConnected || isJoystickConnected) return;
       
       switch(e.key) {
         case 'ArrowUp': handleMovement('forward'); break;
@@ -126,7 +147,7 @@ function DogControl() {
     };
   
     const handleKeyUp = (e) => {
-      if (!isConnected) return;
+      if (!isConnected || isJoystickConnected) return;
       
       switch(e.key) {
         case 'ArrowUp':
@@ -144,8 +165,11 @@ function DogControl() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('gamepadconnected', checkGamepad);
+      window.removeEventListener('gamepaddisconnected', checkGamepad);
     };
-  }, [isConnected, speed]);
+  }, [isConnected, speed, isJoystickConnected]);
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Status Bar */}
@@ -197,172 +221,182 @@ function DogControl() {
         </div>
       </nav>
       {/* Main Control Panel */}
+{/* Main Control Panel */}
 <div className="max-w-7xl mx-auto px-4 py-8">
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-    {/* Joystick Controller Component */}
-    <JoystickController 
-      socket={socket}
-      isConnected={isConnected}
-      onMovement={setMovement}
-    />
-
-    {/* Movement Control */}
+  <div className="grid grid-cols-1 gap-6">
+    {/* Video Feed - Con tamaño ajustado */}
     <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Control de Movimiento</h2>
-      <div className="text-sm text-gray-600 mb-4">
-        Estado: {movement.x === 0 && movement.y === 0 ? 'Detenido' : 'En movimiento'}
-      </div>
-      
-      {/* Directional Controls */}
-      <div className="grid grid-cols-3 gap-2 mb-6">
-        <div></div>
-        <button
-          onMouseDown={() => handleMovement('forward')}
-          onMouseUp={() => handleMovement('stop')}
-          onMouseLeave={() => handleMovement('stop')}
-          className="bg-blue-500 text-white p-4 rounded hover:bg-blue-600"
-        >
-          Adelante
-        </button>
-        <div></div>
-        
-        <button
-          onMouseDown={() => handleMovement('left')}
-          onMouseUp={() => handleMovement('stop')}
-          onMouseLeave={() => handleMovement('stop')}
-          className="bg-blue-500 text-white p-4 rounded hover:bg-blue-600"
-        >
-          Izquierda
-        </button>
-        <button
-          onClick={() => handleMovement('stop')}
-          className="bg-red-500 text-white p-4 rounded hover:bg-red-600"
-        >
-          Detener
-        </button>
-        <button
-          onMouseDown={() => handleMovement('right')}
-          onMouseUp={() => handleMovement('stop')}
-          onMouseLeave={() => handleMovement('stop')}
-          className="bg-blue-500 text-white p-4 rounded hover:bg-blue-600"
-        >
-          Derecha
-        </button>
-
-        <div></div>
-        <button
-          onMouseDown={() => handleMovement('backward')}
-          onMouseUp={() => handleMovement('stop')}
-          onMouseLeave={() => handleMovement('stop')}
-          className="bg-blue-500 text-white p-4 rounded hover:bg-blue-600"
-        >
-          Atrás
-        </button>
-        <div></div>
-      </div>
-      {/* Speed Control */}
-      <div>
-        <label className="block text-gray-700 mb-2">
-          Velocidad: {speed}%
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={speed}
-          onChange={(e) => {
-            const newSpeed = parseInt(e.target.value);
-            setSpeed(newSpeed);
-            logAction('Velocidad', `Ajustada a ${newSpeed}%`);
-          }}
-          className="w-full"
-        />
+      <h2 className="text-xl font-bold text-gray-800 mb-4">Video en Vivo</h2>
+      <div className="max-w-3xl mx-auto"> {/* Añadido contenedor con ancho máximo */}
+        <div className="bg-gray-200 aspect-video rounded flex items-center justify-center">
+          {videoFeed ? (
+            <img 
+              src={videoFeed} 
+              alt="Video feed" 
+              className="w-full h-full object-contain rounded"
+            />
+          ) : (
+            <span className="text-gray-600">Esperando video...</span>
+          )}
+        </div>
       </div>
     </div>
 
-    {/* Modes and Postures */}
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Modos y Posturas</h2>
-      
-      {/* Mode Selector */}
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">Modo de Operación</h3>
-        <div className="grid grid-cols-3 gap-2">
-          {['normal', 'agile', 'stable'].map(mode => (
-            <button
-              key={mode}
-              onClick={() => changeMode(mode)}
-              className={`p-2 rounded ${
-                selectedMode === mode 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              {mode.charAt(0).toUpperCase() + mode.slice(1)}
-            </button>
+    {/* Controls Grid - 2 columnas para los controles debajo del video */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Joystick Controller Component */}
+      <JoystickController 
+        socket={socket}
+        isConnected={isConnected}
+        onMovement={setMovement}
+        setIsStanding={setIsStanding}
+        onModeChange={changeMode}
+      />
+
+      {/* Movement Control */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Control de Movimiento</h2>
+        <div className="text-sm text-gray-600 mb-4">
+          Estado: {movement.x === 0 && movement.y === 0 ? 'Detenido' : 'En movimiento'}
+        </div>
+        
+        {/* Directional Controls */}
+        <div className="grid grid-cols-3 gap-2 mb-6">
+          <div></div>
+          <button
+            onMouseDown={() => handleMovement('forward')}
+            onMouseUp={() => handleMovement('stop')}
+            onMouseLeave={() => handleMovement('stop')}
+            className="bg-blue-500 text-white p-4 rounded hover:bg-blue-600"
+          >
+            Adelante
+          </button>
+          <div></div>
+          
+          <button
+            onMouseDown={() => handleMovement('left')}
+            onMouseUp={() => handleMovement('stop')}
+            onMouseLeave={() => handleMovement('stop')}
+            className="bg-blue-500 text-white p-4 rounded hover:bg-blue-600"
+          >
+            Izquierda
+          </button>
+          <button
+            onClick={() => handleMovement('stop')}
+            className="bg-red-500 text-white p-4 rounded hover:bg-red-600"
+          >
+            Detener
+          </button>
+          <button
+            onMouseDown={() => handleMovement('right')}
+            onMouseUp={() => handleMovement('stop')}
+            onMouseLeave={() => handleMovement('stop')}
+            className="bg-blue-500 text-white p-4 rounded hover:bg-blue-600"
+          >
+            Derecha
+          </button>
+
+          <div></div>
+          <button
+            onMouseDown={() => handleMovement('backward')}
+            onMouseUp={() => handleMovement('stop')}
+            onMouseLeave={() => handleMovement('stop')}
+            className="bg-blue-500 text-white p-4 rounded hover:bg-blue-600"
+          >
+            Atrás
+          </button>
+          <div></div>
+        </div>
+        
+        {/* Speed Control */}
+        <div>
+          <label className="block text-gray-700 mb-2">
+            Velocidad: {speed}%
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={speed}
+            onChange={(e) => {
+              const newSpeed = parseInt(e.target.value);
+              setSpeed(newSpeed);
+              logAction('Velocidad', `Ajustada a ${newSpeed}%`);
+            }}
+            className="w-full"
+          />
+        </div>
+      </div>
+
+      {/* Modes and Postures */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Modos y Posturas</h2>
+        
+        {/* Mode Selector */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-gray-700 mb-3">Modo de Operación</h3>
+          <div className="grid grid-cols-3 gap-2">
+            {['normal', 'agile', 'stable'].map(mode => (
+              <button
+                key={mode}
+                onClick={() => changeMode(mode)}
+                className={`p-2 rounded ${
+                  selectedMode === mode 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Posture Control */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-700 mb-3">Postura</h3>
+          <button
+            onClick={toggleStance}
+            className={`w-full p-3 rounded ${
+              isStanding 
+                ? 'bg-green-500 hover:bg-green-600' 
+                : 'bg-yellow-500 hover:bg-yellow-600'
+            } text-white`}
+          >
+            {isStanding ? 'Sentarse' : 'Pararse'}
+          </button>
+        </div>
+      </div>
+
+      {/* System Status */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Estado del Sistema</h2>
+        <div className="grid grid-cols-2 gap-4">
+          {Object.entries(systemStatus).map(([key, status]) => (
+            <div key={key} className="flex items-center justify-between">
+              <span className="capitalize">{key}:</span>
+              <span className={`px-2 py-1 rounded text-sm ${
+                status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
+                {status}
+              </span>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Posture Control */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">Postura</h3>
-        <button
-          onClick={toggleStance}
-          className={`w-full p-3 rounded ${
-            isStanding 
-              ? 'bg-green-500 hover:bg-green-600' 
-              : 'bg-yellow-500 hover:bg-yellow-600'
-          } text-white`}
-        >
-          {isStanding ? 'Sentarse' : 'Pararse'}
-        </button>
-      </div>
-    </div>
-    {/* System Status */}
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Estado del Sistema</h2>
-      <div className="grid grid-cols-2 gap-4">
-        {Object.entries(systemStatus).map(([key, status]) => (
-          <div key={key} className="flex items-center justify-between">
-            <span className="capitalize">{key}:</span>
-            <span className={`px-2 py-1 rounded text-sm ${
-              status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-            }`}>
-              {status}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    {/* Action History */}
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Historial de Acciones</h2>
-      <div className="space-y-2">
-        {actionHistory.map((entry, index) => (
-          <div key={index} className="flex justify-between text-sm border-b pb-2">
-            <span className="font-medium">{entry.action}:</span>
-            <span className="text-gray-600">{entry.detail}</span>
-            <span className="text-gray-500">{entry.timestamp}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    {/* Video Feed */}
-    <div className="bg-white rounded-lg shadow-md p-6 md:col-span-2">
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Video en Vivo</h2>
-      <div className="bg-gray-200 aspect-video rounded flex items-center justify-center">
-        {videoFeed ? (
-          <img 
-            src={videoFeed} 
-            alt="Video feed" 
-            className="w-full h-full object-contain rounded"
-          />
-        ) : (
-          <span className="text-gray-600">Esperando video...</span>
-        )}
+      {/* Action History */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Historial de Acciones</h2>
+        <div className="space-y-2">
+          {actionHistory.map((entry, index) => (
+            <div key={index} className="flex justify-between text-sm border-b pb-2">
+              <span className="font-medium">{entry.action}:</span>
+              <span className="text-gray-600">{entry.detail}</span>
+              <span className="text-gray-500">{entry.timestamp}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   </div>
